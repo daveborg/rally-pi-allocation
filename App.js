@@ -8,6 +8,102 @@ Ext.define('Tls.InvestmentCategories', {
     _selected_iteration: null,
     _selected_tags: [],
     category_field_name: "InvestmentCategory",
+    thisState: null,
+	getSettingsFields: function() {
+		return [
+
+			{
+                name: 'piTypes',
+                xtype: 'rallycombobox',
+                plugins: ['rallyfieldvalidationui'],
+                allowBlank: false,
+                editable: false,
+                autoSelect: false,
+                validateOnChange: false,
+                validateOnBlur: false,
+                fieldLabel: 'Type', //todo: delete when multiselect enabled
+                // multiSelect: true, //todo: need to validate either all artifacts chosen or only one non-artifact
+                shouldRespondToScopeChange: true,
+                context: this.getContext(),
+                // initialValue: ['HierarchicalRequirement'], //todo: not working
+                storeConfig: {
+                    model: 'TypeDefinition',
+                    sorters: [{ property: 'DisplayName' }],
+                    fetch: ['DisplayName', 'TypePath'],
+                    filters: [
+						{
+							property: 'Parent.Name',
+                    		operator: '=',
+                    		value: 'Portfolio Item'
+               			},
+                		{
+                    		property: 'Creatable',
+                    		operator: '=',
+                    		value: 'true'
+                		}
+            		],
+                    autoLoad: false,
+                    remoteSort: false,
+                    sortOnLoad: true,
+                    remoteFilter: true
+                },
+                displayField: 'DisplayName',
+                valueField: 'TypePath',
+                listeners: {
+                    change: function (combo) {
+                        combo.fireEvent('typeselected', combo.getValue(), combo.context);
+                    },
+                    ready: function (combo) {
+                      combo.fireEvent('typeselected', combo.getValue(), combo.context);
+                    }
+                },
+                bubbleEvents: ['typeselected'],
+                readyEvent: 'ready',
+                handlesEvents: {
+                    projectscopechanged: function (context) {
+                        this.refreshWithNewContext(context);
+                    }
+                }
+            },
+
+
+            {
+				name: 'stackBy',
+				fieldLabel: 'Stack',
+				xtype: 'combobox',
+				width: 300,
+				store: Ext.create('Ext.data.Store', {
+            		fields: ['name', 'value'],
+            		data : [
+                		{"name":"By Child", "value":"child"},
+                		{"name":"By Investment Category", "value":"category"}
+            		]
+        		}),
+            	displayField: 'name',
+            	valueField:'value',
+            	allowBlank: false
+			},
+			{
+				name: 'chartMetric',
+				fieldLabel: 'Chart Metric',
+				xtype: 'combobox',
+				width: 300,
+				store: Ext.create('Ext.data.Store', {
+            		fields: ['name', 'value'],
+            		data : [
+                		{"name":"By Points", "value":"points"},
+                		{"name":"By Count", "value":"count"}
+            		]
+        		}),
+            	displayField: 'name',
+            	valueField: 'value',
+            	allowBlank: false
+			},
+			{ 
+				type: 'query'
+			}
+		];
+	},
     items: [
     {
         xtype:'container',
@@ -69,37 +165,9 @@ Ext.define('Tls.InvestmentCategories', {
     }],
     launch: function() {
         this._addSelectors();
+        this._renewState();
     },
-    
-    /*/=================
-    getSettingsFields: function() {
-		return [
-			{
-				name: 'setting_piType',
-				xtype: 'rallytextfield'
-			},
-			{
-				name: 'setting_itemsToShow',
-				xtype: 'rallytextfield'
-			},
-			{
-				name: 'setting_stack',
-				xtype: 'rallytextfield'
-			},
-			{
-				name: 'type_path',
-				xtype:'rallycombobox',
-				displayField: 'DisplayName',
-				fieldLabel: 'Artifact Type',
-				autoExpand: true,
-				labelWidth: 100,
-				labelAlign: 'left',
-				minWidth: 200,
-				margin: 10,
-				valueField:'TypePath'
-			}
-		];
-    },*/
+
     _addSelectors: function() {
         this._addTypePicker();
         this._addPIButton();
@@ -159,7 +227,7 @@ Ext.define('Tls.InvestmentCategories', {
             fields: ['name', 'value'],
             data : [
                 {"name":"By Child", "value":"child"},
-                {"name":"By Category", "value":"category"}
+                {"name":"By Investment Category", "value":"category"}
             ]
         });
         
@@ -191,7 +259,7 @@ Ext.define('Tls.InvestmentCategories', {
                     me._populateConfigurationReporter();
                 }
             }
-        }).setValue('child');
+        }).setValue('category');
         this.down('#chart_selector_box').add({
             itemId: 'cost_selector',
             xtype: 'rallynumberfield',
@@ -262,9 +330,34 @@ Ext.define('Tls.InvestmentCategories', {
             scope: me
         });
     },
+    
+    _renewState: function() {
+		var me = this;
+		me.logger.log(me, "_renewState()");
+		//me.logger.log(me, "selected_base_records", _selected_base_records);
+		
+    },
+    
+	getState: function() {
+		var me = this;
+		return {
+			selected_base_records: me._selected_base_records
+		};
+	},
+	applyState: function(state) {
+		var me = this;
+		this.thisState = state;
+		me.logger.log(me, "ApplyState");
+		me.logger.log(me, "state", state);
+		//me.logger.log(me, "state.selected_base_records", state.selected_base_records);
+		
+	},
+    
     _getData: function() {
         var me = this;
         this.down('#actual_chart_box').removeAll();
+        
+        me.logger.log(me, "me._selected_base_records", me._selected_base_records);
         
         //if ( this.actual_chart ) { this.actual_chart.destroy(); }
         
@@ -276,7 +369,7 @@ Ext.define('Tls.InvestmentCategories', {
                 iteration_start: Rally.util.DateTime.format(me.down('#iteration_start_selector').getValue(), 'Y-MM-dd'),
                 iteration_end: Rally.util.DateTime.format(me.down('#iteration_end_selector').getValue(), 'Y-MM-dd'),
                 tags: me._selected_tags,
-                stack: me.down('#stack_selector').getValue()
+                stack: me.getSetting('stackBy')
             };
     
             me.logger.log(me,"options",options);
@@ -308,7 +401,7 @@ Ext.define('Tls.InvestmentCategories', {
                 });
             }
         });
-       
+
     },
     _populateConfigurationReporter: function() {
         var me = this;
@@ -345,7 +438,7 @@ Ext.define('Tls.InvestmentCategories', {
             tag_message = "&nbsp;&nbsp;and with one of these tags: " + me._selected_tags.join(',');
         }
         
-        var metric_message = "&nbsp;&nbsp;&nbsp;&nbsp;Display by " + me.down('#metric_selector').getValue();
+        var metric_message = "&nbsp;&nbsp;&nbsp;&nbsp;Display by " + me.getSetting('chartMetric');
 
                 
         if ( me._selected_base_records.length > 0 ) {
@@ -362,34 +455,8 @@ Ext.define('Tls.InvestmentCategories', {
         } else {
             me.down('#selected_pi_box').update("No PI chosen.");
         }
-        
-        
-        this.saveState();
     },
-	getState: function() {
-		var me = this;
-		return {
-			iteration_start_selector: me.down('#iteration_start_selector').getValue(),
-			iteration_end_selector: me.down('#iteration_end_selector').getValue()
-		};
-	},
-	applyState: function(state) {
-		var me = this;
-		me.logger.log(me, "state", state);
 
-		if(me.down('#iteration_start_selector') && state.iteration_start_selector) {
-			me.down('#iteration_start_selector').setValue(state.iteration_start_selector);
-			me.logger.log(me, "state.iteration_start_selector", state.iteration_start_selector);
-			
-			me._populateConfigurationReporter();
-		}
-		if(me.down('#iteration_end_selector') && state.iteration_end_selector) {
-			me.down('#iteration_end_selector').setValue(state.iteration_end_selector);
-			me.logger.log(me, "state.iteration_end_selector", state.iteration_end_selector);
-			
-			me._populateConfigurationReporter();
-		}
-	},
     _launchPIPicker: function() {
         var me = this;
         this.logger.log(this, "launch PI Picker");
@@ -423,33 +490,9 @@ Ext.define('Tls.InvestmentCategories', {
                     me._populateConfigurationReporter();
                 },
                 scope: this
-            }/*,
-            buttons: [{
-                xtype:'rallybutton',
-                text:'Select',
-                userAction:'clicked done in dialog',
-                handler:function(){
-                    
-                    me.dialog.close();
-                },
-                scope: me
-            },
-            {
-                xtype:'rallybutton',
-                text:'Cancel',
-                userAction:'clicked done in dialog',
-                handler:function(){
-                    if ( me._selected_base_records.length > 0 ) {
-                        me.down('#draw_chart_button').setDisabled(false);
-                    } else {
-                        me.down('#draw_chart_button').setDisabled(true);
-                    }
-                    me._populateConfigurationReporter();
-                    me.dialog.close();
-                },
-                scope: me
-            }]*/
+            }
          });
+         
     },
     _findDescendants: function(key,options,records){
         var me = this;
@@ -568,6 +611,7 @@ Ext.define('Tls.InvestmentCategories', {
                         me.logger.log(this,"Still waiting for " + waiter);
                     } else { 
                         me._makeBarChart();
+                        //me._makePieChart();
                     }
                 }
             }
@@ -636,7 +680,7 @@ Ext.define('Tls.InvestmentCategories', {
             }
             
             var data_key = child.get('Name');
-            if (  me.down('#stack_selector').getValue() === "category" ) {
+            if (  me.getSetting('stackBy') === "category" ) {
                 data_key = child.get(me.category_field_name) || "Other";
             }
             if ( ! chart_data[pi_key][data_key]) {
@@ -708,29 +752,10 @@ Ext.define('Tls.InvestmentCategories', {
                     if ( record_chart_data[category] ) {
                         data_point = record_chart_data[category];
                     }
-//                    if (me.down('#metric_selector').getValue() === "cost" && record_chart_data[category]) { 
-//                        data_point = {
-//                            dataLabels: {
-//                                formatter: function() {
-//                                    if ( this.y ) {
-//                                        return '$'+this.y;
-//                                    } else {
-//                                        return '$0';
-//                                    }
-//                                },
-//                                enabled: true,
-//                                align: 'left',
-//                                style: {
-//                                    fontWeight: 'bold'
-//                                }
-//                            },
-//                            y: record_chart_data[category]
-//                                
-//                        }
-//                    }
+
                     series_hash[category].data.push(data_point);
                 });
-                //var name = Ext.util.Format.ellipsis(key,28,true);
+
             });
             
             Ext.Object.each(series_hash,function(key,value){ series.push(value);});
